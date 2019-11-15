@@ -1,19 +1,25 @@
 -- Changelog --
 -- 2019-10-22: First version considered done
--- 2019-10-27: Made x I/O box active at program launch
+-- 2019-10-27: Made x I/O box active at program launch and window resizing
+-- 2019-11-07: Also made x I/O box active when Lua gets focus
+--             Added check for program running on a CAS calculator
+--             Optimized BASIC functions. Same function used to calculate y value and graph.
+--             Made graphs piecewise functions.
+--             Added check if x is outside xi range in lagrange interpolation.
+--             Found out tabular equations requires xi to be in ascending order, corrected. (Descending order results in strange behaviour)
+--             Added copy/cut/paste text functionality.
+--             Added Spline Interpolation.
 
--- To do --
--- Make box x active at program launch
-
--- Program created with the use of:
+-- References --
 -- https://en.wikipedia.org/wiki/Lagrange_polynomial
 -- https://www.dcode.fr/lagrange-interpolating-polynomial
 -- Astronomical Algorithms 2nd Ed - Jean Meeus, ISBN: 0-943396-61-1
+-- https://en.wikipedia.org/wiki/Spline_(mathematics)
 
 -- Minimum requirements: TI Nspire CX CAS (color resulution 318x212)
 
 platform.apilevel = '2.4'
-local appversion = "191027" -- Made by: Fredrik Ekelöf, fredrik.ekelof@gmail.com
+local appversion = "191107" -- Made by: Fredrik Ekelöf, fredrik.ekelof@gmail.com
 
 -- !All positions and sizes uses hand held unit as reference!
 -- !Program will scale relative to size on held unit!
@@ -33,27 +39,31 @@ local brdcolorinact = 0xEBEBEB -- Inactive box border, grey
 local errorcolor = 0xF02600 -- Error text, dark red
 
 -- Variabels for internal use
-local prgmlaunch = 1 -- Used to make x I/O active at program launch
+local isCAS = nil -- Used for CAS check. Variabel is set in on.resize() function
 local fnthdg,fntbody = fnthdgset,fntbodyset -- Font size variabels used by functions
 local lblhdg = "" -- Empty variabel for storing heading
-local calcmode = 4 -- Defaults to Lagrange interpolation at program launch (ID 5 = tabular interpolation)
+local calcmode = 4 -- Defaults to Lagrange interpolation at program launch (ID 5 = tabular interpolation, ID 8 = Spline interpolation)
 local ioidtable = {} -- Initial empty table for storing I/O editor boxes unique ID:s
 local ioexptable = {} -- Initial empty table for storing I/O editor boxes values
-local optbtnlagrangeclick = false -- Tracks if Lagrange button is being clicked
-local optbtnlagrangehover = false -- Tracks if mouse hovers over Lagrange button
-local optbtntabularclick = false -- Tracks if Tabular button is being clicked
-local optbtntabularhover = false -- Tracks if mouse hovers over Tabular button
-local btncalcclick = false -- Tracks if calc button is being clicked
-local btncalchover = false -- Tracks if mouse hovers over calc button
 local btncalcdis = nil -- Initial value for flagging calc button as disabled
-local btnresetclick = false -- Tracks if reset button is being clicked
-local btnresethover = false -- Tracks if mouse hovers over reset button
 local escrst = 0 -- Tracks how many times Esc key has been pressed
 local esccounter = 0 -- Timer for Esc key press reset
 local btnresetflash = false -- Tracks reset button flash when Esc has been pressed two times
 local btnresetflashcounter = 0 -- Timer for reset button blue flash when pressing Esc key two times
 local enterpress = false -- Tracks if Enter key is being pressed in box x
 local entercounter = 0 -- Timer for calc button blue flash when pressing Enter key
+
+-- Mouse movement button tracking variabels
+local optbtnlagrangeclick = false -- Tracks if Lagrange button is being clicked
+local optbtnlagrangehover = false -- Tracks if mouse hovers over Lagrange button
+local optbtntabularclick = false -- Tracks if Tabular button is being clicked
+local optbtntabularhover = false -- Tracks if mouse hovers over Tabular button
+local optbtnsplineclick = false -- Tracks if Spline button is being clicked
+local optbtnsplinehover = false -- Tracks if mouse hovers over Spline button
+local btncalcclick = false -- Tracks if calc button is being clicked
+local btncalchover = false -- Tracks if mouse hovers over calc button
+local btnresetclick = false -- Tracks if reset button is being clicked
+local btnresethover = false -- Tracks if mouse hovers over reset button
 
 -- Screen properties
 local scr = platform.window -- Shortcut
@@ -77,6 +87,11 @@ function on.construction()
     -- Sets background colour
     scr:setBackgroundColor(bgcolor)
 
+    -- Activates copy/cut/paste functionality
+    toolpalette.enableCopy(true)
+    toolpalette.enableCut(true)
+    toolpalette.enablePaste(true)
+
     -- Defines editor boxes variabels, var = iobox(ID,"label text",rows in box,line number,read only,text wrap)
     inpx = iobox(1,"x = ",1,1,0,0)
     outpy = iobox(2,"y = ",1,2,1,0)
@@ -85,7 +100,8 @@ function on.construction()
     -- Defines option button optbtnxxx = optionbutton(id,heading,label,xpos,ypos,width,height)
     -- Position xy ref is bottom right corner
     optbtnlagrange = optionbutton(4,"Lagrange Interpolation","Lagrange",136,24,12,12)
-    optbtntabular = optionbutton(5,"Tabular Interpolation","Tabular",48,24,12,12)
+    optbtntabular = optionbutton(5,"Tabular Interpolation","Tabular",136,7,12,12)
+    optbtnspline = optionbutton(8,"Spline Interpolation","Spline",40,24,12,12)
 
     -- Defines push buttons, btnname = pushbutton(ID,"label text",xpos,ypos,width,height)
     -- Position xy ref is bottom right corner
@@ -107,10 +123,25 @@ function on.timer() -- Updates screen 5 times per second
 
 end
 
+function on.getFocus()
+
+    for i = 1,3 do -- Makes all I/O box borders grey
+        ioidtable[i]:setBorderColor(brdcolorinact)
+    end
+
+    -- Makes x I/O box active at program launch and window resizing
+    ioidtable[1]:setFocus()
+    ioidtable[1]:setBorderColor(brdcoloract)
+
+end
+
 function on.resize()
 
     -- Fetches new screen dimensions when window resizes
     scrwh,scrht = scr:width(),scr:height() -- Stores updated screen dimensions
+
+    -- Checks if program is running on a CAS calculator
+    isCAS = not not math.evalStr("?")
 
     -- Adjusts font size to screen size. Program is designed to have vertical split screen with spreadsheet.
     if scrwh >= 158 then
@@ -126,6 +157,10 @@ function on.resize()
     outpy:ioeditor()
     outpeq:ioeditor()
 
+    -- Makes x I/O box active at program launch and window resizing
+    ioidtable[1]:setFocus()
+    ioidtable[1]:setBorderColor(brdcoloract)
+
 end
 
 -- Menu Start --
@@ -140,6 +175,7 @@ menu = {
     {"Interpolation Mode",
         {"Lagrange",function() menubar(4) end},
         {"Tabular",function() menubar(5) end},
+        {"Spline",function() menubar(8) end},
     },
 }
 toolpalette.register(menu)
@@ -150,6 +186,7 @@ function on.paint(gc)
     -- Prints buttons
     optbtnlagrange:paint(gc)
     optbtntabular:paint(gc)
+    optbtnspline:paint(gc)
     btncalc:paint(gc)
     btnreset:paint(gc)
 
@@ -165,16 +202,20 @@ function on.paint(gc)
 
     -- Prints heading
     gc:setFont("sansserif","b",fnthdg) -- Heading font
-    gc:setColorRGB(0x000000)
     local hdgwh,hdght = gc:getStringWidth(lblhdg),gc:getStringHeight(lblhdg) -- Fetches heading dimensions
     if scrht/scrwh < 1.3 or scrht/scrwh > 1.4 or scrht < 212 then -- Prints warning for incorrect screen split
+        gc:setColorRGB(errorcolor)
         gc:drawString("Screen ratio not supported!",0,0,"top")
+    elseif isCAS == false then
+        gc:setColorRGB(errorcolor)
+        gc:drawString("Calculator not supported!",0,0,"top")
     else
+        gc:setColorRGB(0x000000)
         gc:drawString(lblhdg,scrwh/2-hdgwh/2,0,"top") -- Prints heading
     end
     gc:setPen("thin", "dotted")
     gc:drawLine(0,hdght,scrwh,hdght) -- Draws line below heading
-    
+
 end
 
 -- Checks heading string size outside of paint function
@@ -222,13 +263,6 @@ function iobox:lblpaint(gc)
     gc:setFont("sansserif","r",fntbody)
     gc:setColorRGB(0x000000)
     gc:drawString(self.lbl,padding*scrwh/158,hdght+padding*scrwh/158+scrht*(self.line-1)/lines,"top")
-
-    -- Makes dec I/O box active at program launch
-    if prgmlaunch == 1 then
-        ioidtable[1]:setFocus()
-        ioidtable[1]:setBorderColor(brdcoloract)
-        prgmlaunch = 0
-    end
 
 end
 
@@ -286,19 +320,23 @@ function iobox:ioeditor()
     self.boxid:registerFilter { -- Keyboard/mouse actions, Start
         tabKey = function()  -- Changes calc method
             if calcmode == 4 then
-                calcmode = 5
-            else
+                calcmode = 8
+            elseif calcmode == 5 then
                 calcmode = 4
+            elseif calcmode == 8 then
+                calcmode = 5
             end
             ioidtable[2]:setText("") -- Resets output text
             ioidtable[3]:setText("")
             return true
         end,
         backtabKey = function() -- Changes calc method
-            if calcmode == 4 then
-                calcmode = 5
-            else
+            if calcmode == 8 then
                 calcmode = 4
+            elseif calcmode == 5 then
+                calcmode = 8
+            elseif calcmode == 4 then
+                calcmode = 5
             end
             ioidtable[2]:setText("") -- Resets output text
             ioidtable[3]:setText("")
@@ -349,6 +387,8 @@ function iobox:ioeditor()
                     calclagrange() -- Sends command to calculate Lagrange
                 elseif calcmode == 5 then
                     calctab() -- Sends command to calculate Tabulars
+                elseif calcmode == 8 then
+                    calcspline() -- Sends command to calculate Splines
                 end
             end
             return true
@@ -361,6 +401,8 @@ function iobox:ioeditor()
                     calclagrange() -- Sends command to calculate Lagrange
                 elseif calcmode == 5 then
                     calctab() -- Sends command to calculate Tabulars
+                elseif calcmode == 8 then
+                    calcspline()  -- Sends command to calculate Splines
                 end
             end
             return true
@@ -413,7 +455,7 @@ function optionbutton:paint(gc)
             radiobuttoncheckedgrey = radiobuttoncheckedgrey:copy(self.wh*scrwh/158,self.ht*scrht/212)
             gc:drawImage(radiobuttoncheckedgrey,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
         end
-    elseif  calcmode == 5 and self.id == 4 then
+    elseif self.id == 4 and calcmode ~= 4 then
         radiobuttonunchecked = radiobuttonunchecked:copy(self.wh*scrwh/158,self.ht*scrht/212)
         gc:drawImage(radiobuttonunchecked,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
         if optbtnlagrangehover == true then
@@ -431,10 +473,28 @@ function optionbutton:paint(gc)
             radiobuttoncheckedgrey = radiobuttoncheckedgrey:copy(self.wh*scrwh/158,self.ht*scrht/212)
             gc:drawImage(radiobuttoncheckedgrey,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
         end
-    elseif  calcmode == 4 and self.id == 5 then
+    elseif self.id == 5 and calcmode ~= 5 then
         radiobuttonunchecked = radiobuttonunchecked:copy(self.wh*scrwh/158,self.ht*scrht/212)
         gc:drawImage(radiobuttonunchecked,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
         if optbtntabularhover == true then
+            radiobuttonuncheckedgrey = radiobuttonuncheckedgrey:copy(self.wh*scrwh/158,self.ht*scrht/212)
+            gc:drawImage(radiobuttonuncheckedgrey,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
+        end
+    end
+
+    -- Sets properties for spline radio button
+    if calcmode == 8 and self.id == 8 then
+        lblhdg = self.hdg -- Sets heading Tabular Interpolation
+        radiobuttonchecked = radiobuttonchecked:copy(self.wh*scrwh/158,self.ht*scrht/212)
+        gc:drawImage(radiobuttonchecked,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
+        if optbtnsplinehover == true then
+            radiobuttoncheckedgrey = radiobuttoncheckedgrey:copy(self.wh*scrwh/158,self.ht*scrht/212)
+            gc:drawImage(radiobuttoncheckedgrey,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
+        end
+    elseif self.id == 8 and calcmode ~= 8 then
+        radiobuttonunchecked = radiobuttonunchecked:copy(self.wh*scrwh/158,self.ht*scrht/212)
+        gc:drawImage(radiobuttonunchecked,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
+        if optbtnsplinehover == true then
             radiobuttonuncheckedgrey = radiobuttonuncheckedgrey:copy(self.wh*scrwh/158,self.ht*scrht/212)
             gc:drawImage(radiobuttonuncheckedgrey,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
         end
@@ -478,8 +538,8 @@ function pushbutton:paint(gc)
         end
     else
         btncalcdis = true
-    end 
-    
+    end
+
     -- Fetches string sizes of heading and labels
     local btnlblwh,btnlblht = platform.withGC(getbodysize,self.lbl)
     local hdgwh,hdght = platform.withGC(gethdgsize,lblhdg)
@@ -512,7 +572,7 @@ function pushbutton:paint(gc)
             gc:drawImage(buttonwhite,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
             gc:setFont("sansserif","r",fnthdg)
             gc:setColorRGB(0x000000)
-            gc:drawString(self.lbl,scrwh-(self.x+padding+self.wh/2)*scrwh/158-btnlblwh/2,scrht-(self.y+padding+self.ht/2)*scrht/212-btnlblht/2,"top")     
+            gc:drawString(self.lbl,scrwh-(self.x+padding+self.wh/2)*scrwh/158-btnlblwh/2,scrht-(self.y+padding+self.ht/2)*scrht/212-btnlblht/2,"top")
         end
         if btncalchover == true and btncalcclick == false then -- Makes calc button gray on mouse hover
             buttongreylight = buttongreylight:copy(self.wh*scrwh/158,self.ht*scrht/212)
@@ -582,6 +642,13 @@ function on.mouseMove(mx,my)
         optbtntabularhover = false
     end
 
+    -- Sends command to make option button Spline grey
+    if optbtnspline:hover(mx,my) then
+        optbtnsplinehover = true
+    else
+        optbtnsplinehover = false
+    end
+
     -- Sends command to make calc button grey
     if btncalc:hover(mx,my) then
         btncalchover = true
@@ -603,6 +670,7 @@ function on.mouseUp(mx,my)
     -- Sends command to make buttons white background when mouse button is released
     optbtnlagrangeclick = false
     optbtntabularclick = false
+    optbtnsplineclick = false
     btncalcclick = false
     btnresetclick = false
 
@@ -626,6 +694,14 @@ function on.mouseDown(mx,my)
         ioidtable[3]:setText("")
     end
 
+    -- Tabular button, sends command to use spline calc mode
+    if optbtnspline:hover(mx,my) then
+        optbtnsplineclick = true
+        calcmode = 8
+        ioidtable[2]:setText("")
+        ioidtable[3]:setText("")
+    end
+
     -- Calc button, sends command to do calculations on mouse click
     if btncalc:hover(mx,my) then
         btncalcclick = true
@@ -634,6 +710,8 @@ function on.mouseDown(mx,my)
                 calclagrange() -- Sends command to calculate Lagrange
             elseif calcmode == 5 then
                 calctab() -- Sends command to calculate Tabulars
+            elseif calcmode == 8 then
+                calcspline() -- Sends command to calculate Splines
             end
         end
     end
@@ -653,6 +731,7 @@ function calclagrange()
     local x = ioexptable[1] -- Fetches x
     local dup = 0 -- Initial value for checking unique xi values
     local xiyicheck = 0 -- Initial value to verify tables in spreadsheet are OK.
+    local xrange = nil -- Initial value to verify x value is within xi table range
 
     -- Verifies xi and yi contain valid numbers
     if xi == nil or yi == nil then
@@ -664,26 +743,51 @@ function calclagrange()
         ioidtable[3]:setText("Table is to short")
         xiyicheck = 1
     else
-         -- Verifies unique xi values
+
+        -- Sorts xi table in ascending order
         table.sort(xi)
+
+        -- Verifies unique xi values
         for i = 1, #xi-1 do
             if xi[i] == xi[i+1] then
                 dup = dup+1
             end
+
         end
+
+        -- Checks if x is a valid number within xi table range
+        if type(x) == "number" then
+            if x >= xi[1] and x <= xi[#xi] then
+                xrange = 0 -- x is inside xi table range
+            else
+                xrange = 1 -- x is outside xi table range
+            end
+        else
+            xrange = nil -- x is not a number
+        end
+
         if dup ~= 0 then
             ioidtable[2]:setText("- - -")
             ioidtable[3]:setText("xi's must be unique")
         end
+
+        if xrange == 1 then
+            ioidtable[2]:setText("- - -")
+            ioidtable[3]:setText("x is out of range")
+        elseif xrange == nil then
+            ioidtable[2]:setText("- - -")
+            ioidtable[3]:setText("x is unknown")
+        end
+
     end
 
     -- Calculates equation
-    if dup == 0 and xiyicheck == 0 then
+    if dup == 0 and xiyicheck == 0 and xrange == 0 then
         math.eval("delvar x")
-        local printeq = math.evalStr("lagrangefunction:=lagrangeeq(xi,yi)") -- Calculates graph
+        local printeq = math.evalStr("lagrangefunction:=lagrange(x,xi,yi,0)") -- Calculates graph
         ioidtable[3]:setText("\\0el {"..printeq.."}") -- Prints equation
         if type(ioexptable[1]) == "number" then
-            local printy = math.eval("lagrangey("..x..",xi,yi)")
+            local printy = math.eval("lagrange("..x..",xi,yi,1)")
             if tonumber(printy) == nil then
                 printy = "Error in CAS math engine"
             end
@@ -693,7 +797,6 @@ function calclagrange()
         else
             ioidtable[3]:setText("x must be a number")
         end
-
     end
 
 end
@@ -707,9 +810,10 @@ function calctab()
     local dup = 0 -- Flag for duplicates in xi (all values are same)
     local chklinans = 0 -- Flag for verification that x is within calculation range
     local tablewarn = 0 -- Warning if x is closer to end point then center point
+    local xsort = 0 -- Initial value for checking if xi table is ascending
 
     -- 3 & 5 tabular, verifies integrity of table xi and yi
-    -- TI math engine must be used due to 1.3-2.4+1.1 does not equal zero in Lua 
+    -- TI math engine must be used due to 1.3-2.4+1.1 does not equal zero in Lua
     if xi ~= nil and yi ~= nil then -- Tables are not empty
         if #xi == 3 and #yi == 3 or #xi == 5 and #yi == 5 then -- Tables must contain 3 or 5 coordinates
             if #xi == 3 and math.eval("xicheckdist(3,xi)") ~= 0 then -- 3 tabular, x values must be evenly distributed
@@ -722,6 +826,12 @@ function calctab()
                 ioidtable[3]:setText("x values must be evenly distributed")
                 intcheck = 1 -- Flag: Do not calculate
             end
+            -- Verifies xi table is sorted in ascending order
+            for i = 1, #xi-1 do
+                if xi[i+1] < xi[i] then
+                    xsort = 1
+                end
+            end
             for i = 1, #xi-1 do -- Checks for duplicates
                 if xi[i] == xi[i+1] then
                     dup = dup+1 -- Flag: Do not calculate
@@ -730,6 +840,10 @@ function calctab()
             if dup ~= 0 then
                 ioidtable[2]:setText("- - -") -- Error message
                 ioidtable[3]:setText("xi's must be unique")
+            end
+            if xsort ~= 0 then
+                ioidtable[2]:setText("- - -")
+                ioidtable[3]:setText("xi's must be sorted in ascending order")
             end
         else -- Error message
             ioidtable[2]:setText("- - -")
@@ -793,12 +907,12 @@ function calctab()
     end
 
     -- 3 tabular, sends command to math engine
-    if #xi == 3 and #yi == 3 and intcheck == 0 and dup == 0 and chklinans == 0 then
+    if #xi == 3 and #yi == 3 and intcheck == 0 and dup == 0 and chklinans == 0 and xsort == 0 then
         math.eval("delvar x")
-        local printeq = math.evalStr("tabular3function:=tabular3eq(xi,yi)") -- Calculates graph
+        local printeq = math.evalStr("tabular3function:=tabular3(x,xi,yi,0)") -- Calculates graph
         ioidtable[3]:setText("\\0el {"..printeq.."}") -- Prints equation
         if type(x) == "number" then
-            local printy = math.eval("tabular3y("..x..",xi,yi)") -- Calculates y
+            local printy = math.eval("tabular3("..x..",xi,yi,1)") -- Calculates y
             if tonumber(printy) == nil then
                 printy = "Error in math engine"
             else -- Displays answer
@@ -815,12 +929,12 @@ function calctab()
     end
 
     -- 5 tabular, sends command to math engine
-    if #xi == 5 and #yi == 5 and intcheck == 0 and dup == 0 and chklinans == 0 then
+    if #xi == 5 and #yi == 5 and intcheck == 0 and dup == 0 and chklinans == 0 and xsort == 0 then
         math.eval("delvar x")
-        local printeq = math.evalStr("tabular5function:=tabular5eq(xi,yi)") -- Calculates graph
-        ioidtable[3]:setText("\\0el {"..printeq.."}") -- Prints equation        
+        local printeq = math.evalStr("tabular5function:=tabular5(x,xi,yi,0)") -- Calculates graph
+        ioidtable[3]:setText("\\0el {"..printeq.."}") -- Prints equation
         if type(x) == "number" then
-            local printy = math.eval("tabular5y("..x..",xi,yi)") -- Calculates y
+            local printy = math.eval("tabular5("..x..",xi,yi,1)") -- Calculates y
             if tonumber(printy) == nil then
                 printy = "Error in math engine"
             else -- Displays answer
@@ -838,6 +952,95 @@ function calctab()
 
 end
 
+function calcspline()
+
+    local xi = var.recall("xi") -- Stores xi table from Nspire in Lua
+    local yi = var.recall("yi")-- Stores yi table from Nspire in Lua
+    local x = ioexptable[1] -- Fetches x
+    local dup = 0 -- Initial value for checking unique xi values
+    local xiyicheck = 0 -- Initial value to verify tables in spreadsheet are OK.
+    local xrange = nil -- Initial value to verify x value is within xi table range
+    local xsort = 0 -- Initial value for checking if xi table is ascending
+
+    -- Verifies xi and yi contain valid numbers
+    if xi == nil or yi == nil then
+        ioidtable[2]:setText("- - -")
+        ioidtable[3]:setText("Aw, Snap! Something is wrong.")
+        xiyicheck = 1
+    elseif #xi < 3 or #yi < 3 then
+        ioidtable[2]:setText("- - -")
+        ioidtable[3]:setText("Table is to short")
+        xiyicheck = 1
+    else
+
+        -- Verifies xi table is sorted in ascending order
+        for i = 1, #xi-1 do
+            if xi[i+1] < xi[i] then
+                xsort = 1
+            end
+        end
+
+         -- Sorts xi table in ascending order
+        table.sort(xi)
+
+        -- Verifies unique xi values
+        for i = 1, #xi-1 do
+            if xi[i] == xi[i+1] then
+                dup = dup+1
+            end
+        end
+
+        -- Checks if x is a valid number within xi table range
+        if type(x) == "number" then
+            if x >= xi[1] and x <= xi[#xi] then
+                xrange = 0 -- x is inside xi table range
+            else
+                xrange = 1 -- x is outside xi table range
+            end
+        else
+            xrange = nil -- x is not a number
+        end
+
+        if xsort ~= 0 then
+            ioidtable[2]:setText("- - -")
+            ioidtable[3]:setText("xi's must be sorted in ascending order")
+        end
+
+        if dup ~= 0 then
+            ioidtable[2]:setText("- - -")
+            ioidtable[3]:setText("xi's must be unique")
+        end
+
+        if xrange == 1 then
+            ioidtable[2]:setText("- - -")
+            ioidtable[3]:setText("x is out of range")
+        elseif xrange == nil then
+            ioidtable[2]:setText("- - -")
+            ioidtable[3]:setText("x is unknown")
+        end
+
+    end
+
+    -- Calculates equation
+    if dup == 0 and xiyicheck == 0 and xrange == 0 and xsort == 0 then
+        math.eval("delvar x")
+        local printeq = math.evalStr("splinefunction:=spline(x,xi,yi,0)") -- Calculates graph
+        ioidtable[3]:setText("\\0el {"..printeq.."}") -- Prints equation
+        if type(ioexptable[1]) == "number" then
+            local printy = math.eval("spline("..x..",xi,yi,1)")
+            if tonumber(printy) == nil then
+                printy = "Error in CAS math engine"
+            end
+            var.store("xplot",ioexptable[1])
+            var.store("yplot",printy)
+            ioidtable[2]:setText(printy) -- Print answer y
+        else
+            ioidtable[3]:setText("x must be a number")
+        end
+
+    end
+end
+
 function reset()
 
     for i = 1,3 do
@@ -848,6 +1051,7 @@ function reset()
     var.store("lagrangefunction",0)
     var.store("tabular3function",0)
     var.store("tabular5function",0)
+    var.store("splinefunction",0)
     var.store("xi",{})
     var.store("yi",{})
     var.store("xplot",0)
