@@ -1,7 +1,9 @@
 -- Changelog --
 -- 2019-10-22: First version considered done
+-- 2019-10-27: Made x I/O box active at program launch
 
 -- To do --
+-- Make box x active at program launch
 
 -- Program created with the use of:
 -- https://en.wikipedia.org/wiki/Lagrange_polynomial
@@ -11,7 +13,7 @@
 -- Minimum requirements: TI Nspire CX CAS (color resulution 318x212)
 
 platform.apilevel = '2.4'
-local appversion = "191022" -- Made by: Fredrik Ekelöf, fredrik.ekelof@gmail.com
+local appversion = "191027" -- Made by: Fredrik Ekelöf, fredrik.ekelof@gmail.com
 
 -- !All positions and sizes uses hand held unit as reference!
 -- !Program will scale relative to size on held unit!
@@ -31,6 +33,7 @@ local brdcolorinact = 0xEBEBEB -- Inactive box border, grey
 local errorcolor = 0xF02600 -- Error text, dark red
 
 -- Variabels for internal use
+local prgmlaunch = 1 -- Used to make x I/O active at program launch
 local fnthdg,fntbody = fnthdgset,fntbodyset -- Font size variabels used by functions
 local lblhdg = "" -- Empty variabel for storing heading
 local calcmode = 4 -- Defaults to Lagrange interpolation at program launch (ID 5 = tabular interpolation)
@@ -171,7 +174,7 @@ function on.paint(gc)
     end
     gc:setPen("thin", "dotted")
     gc:drawLine(0,hdght,scrwh,hdght) -- Draws line below heading
-
+    
 end
 
 -- Checks heading string size outside of paint function
@@ -219,6 +222,13 @@ function iobox:lblpaint(gc)
     gc:setFont("sansserif","r",fntbody)
     gc:setColorRGB(0x000000)
     gc:drawString(self.lbl,padding*scrwh/158,hdght+padding*scrwh/158+scrht*(self.line-1)/lines,"top")
+
+    -- Makes dec I/O box active at program launch
+    if prgmlaunch == 1 then
+        ioidtable[1]:setFocus()
+        ioidtable[1]:setBorderColor(brdcoloract)
+        prgmlaunch = 0
+    end
 
 end
 
