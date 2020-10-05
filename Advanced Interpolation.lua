@@ -9,17 +9,19 @@
 --             Found out tabular equations requires xi to be in ascending order, corrected. (Descending order results in strange behaviour)
 --             Added copy/cut/paste text functionality.
 --             Added Spline Interpolation.
+-- 2020-10-04: Added linear interpolation.
 
 -- References --
 -- https://en.wikipedia.org/wiki/Lagrange_polynomial
 -- https://www.dcode.fr/lagrange-interpolating-polynomial
 -- Astronomical Algorithms 2nd Ed - Jean Meeus, ISBN: 0-943396-61-1
 -- https://en.wikipedia.org/wiki/Spline_(mathematics)
+-- https://en.wikipedia.org/wiki/Linear_interpolation
 
 -- Minimum requirements: TI Nspire CX CAS (color resulution 318x212)
 
 platform.apilevel = '2.4'
-local appversion = "191107" -- Made by: Fredrik Ekelöf, fredrik.ekelof@gmail.com
+local appversion = "201005" -- Made by: Fredrik Ekelöf, fredrik.ekelof@gmail.com
 
 -- !All positions and sizes uses hand held unit as reference!
 -- !Program will scale relative to size on held unit!
@@ -42,7 +44,7 @@ local errorcolor = 0xF02600 -- Error text, dark red
 local isCAS = nil -- Used for CAS check. Variabel is set in on.resize() function
 local fnthdg,fntbody = fnthdgset,fntbodyset -- Font size variabels used by functions
 local lblhdg = "" -- Empty variabel for storing heading
-local calcmode = 4 -- Defaults to Lagrange interpolation at program launch (ID 5 = tabular interpolation, ID 8 = Spline interpolation)
+local calcmode = 4 -- Defaults to Lagrange interpolation at program launch (ID 5 = tabular interpolation, ID 8 = Spline interpolation, ID 9 = Linear interpolation)
 local ioidtable = {} -- Initial empty table for storing I/O editor boxes unique ID:s
 local ioexptable = {} -- Initial empty table for storing I/O editor boxes values
 local btncalcdis = nil -- Initial value for flagging calc button as disabled
@@ -60,6 +62,8 @@ local optbtntabularclick = false -- Tracks if Tabular button is being clicked
 local optbtntabularhover = false -- Tracks if mouse hovers over Tabular button
 local optbtnsplineclick = false -- Tracks if Spline button is being clicked
 local optbtnsplinehover = false -- Tracks if mouse hovers over Spline button
+local optbtnlinearclick = false -- Tracks if Linear button is being clicked
+local optbtnlinearhover = false -- Tracks if mouse hovers over Linear button
 local btncalcclick = false -- Tracks if calc button is being clicked
 local btncalchover = false -- Tracks if mouse hovers over calc button
 local btnresetclick = false -- Tracks if reset button is being clicked
@@ -95,13 +99,14 @@ function on.construction()
     -- Defines editor boxes variabels, var = iobox(ID,"label text",rows in box,line number,read only,text wrap)
     inpx = iobox(1,"x = ",1,1,0,0)
     outpy = iobox(2,"y = ",1,2,1,0)
-    outpeq = iobox(3,"y = ",3,3,1,1)
+    outpeq = iobox(3,"y = ",2,3,1,1)
 
     -- Defines option button optbtnxxx = optionbutton(id,heading,label,xpos,ypos,width,height)
     -- Position xy ref is bottom right corner
     optbtnlagrange = optionbutton(4,"Lagrange Interpolation","Lagrange",136,24,12,12)
-    optbtntabular = optionbutton(5,"Tabular Interpolation","Tabular",136,7,12,12)
-    optbtnspline = optionbutton(8,"Spline Interpolation","Spline",40,24,12,12)
+    optbtntabular = optionbutton(5,"Tabular Interpolation","Tabular",48,41,12,12)
+    optbtnspline = optionbutton(8,"Spline Interpolation","Spline",48,24,12,12)
+    optbtnlinear = optionbutton(9,"Linear Interpolation","Linear",136,41,12,12)
 
     -- Defines push buttons, btnname = pushbutton(ID,"label text",xpos,ypos,width,height)
     -- Position xy ref is bottom right corner
@@ -173,8 +178,9 @@ end
 
 menu = {
     {"Interpolation Mode",
-        {"Lagrange",function() menubar(4) end},
+        {"Linear",function() menubar(9) end},
         {"Tabular",function() menubar(5) end},
+        {"Lagrange",function() menubar(4) end},
         {"Spline",function() menubar(8) end},
     },
 }
@@ -187,6 +193,7 @@ function on.paint(gc)
     optbtnlagrange:paint(gc)
     optbtntabular:paint(gc)
     optbtnspline:paint(gc)
+    optbtnlinear:paint(gc)
     btncalc:paint(gc)
     btnreset:paint(gc)
 
@@ -270,7 +277,7 @@ function iobox:ioeditor()
 
     function inpexp()
 
-        local boxexp = self.boxid:getExpression() -- Fetsches I/O boxes input data
+        local boxexp = self.boxid:getExpression() -- Fetches I/O boxes input data
 
         -- Number validation of input box x
         if self.id == 1 then
@@ -324,6 +331,8 @@ function iobox:ioeditor()
             elseif calcmode == 5 then
                 calcmode = 4
             elseif calcmode == 8 then
+                calcmode = 9
+            elseif calcmode == 9 then
                 calcmode = 5
             end
             ioidtable[2]:setText("") -- Resets output text
@@ -331,12 +340,14 @@ function iobox:ioeditor()
             return true
         end,
         backtabKey = function() -- Changes calc method
-            if calcmode == 8 then
-                calcmode = 4
-            elseif calcmode == 5 then
-                calcmode = 8
-            elseif calcmode == 4 then
+            if calcmode == 4 then
                 calcmode = 5
+            elseif calcmode == 5 then
+                calcmode = 9
+            elseif calcmode == 8 then
+                calcmode = 4
+            elseif calcmode == 9 then
+                calcmode = 8
             end
             ioidtable[2]:setText("") -- Resets output text
             ioidtable[3]:setText("")
@@ -389,6 +400,8 @@ function iobox:ioeditor()
                     calctab() -- Sends command to calculate Tabulars
                 elseif calcmode == 8 then
                     calcspline() -- Sends command to calculate Splines
+                elseif calcmode == 9 then
+                    calclinear() -- Sends command to calculate Linear
                 end
             end
             return true
@@ -403,6 +416,8 @@ function iobox:ioeditor()
                     calctab() -- Sends command to calculate Tabulars
                 elseif calcmode == 8 then
                     calcspline()  -- Sends command to calculate Splines
+                elseif calcmode == 9 then
+                    calclinear()  -- Sends command to calculate Linear
                 end
             end
             return true
@@ -484,7 +499,7 @@ function optionbutton:paint(gc)
 
     -- Sets properties for spline radio button
     if calcmode == 8 and self.id == 8 then
-        lblhdg = self.hdg -- Sets heading Tabular Interpolation
+        lblhdg = self.hdg -- Sets heading Spline Interpolation
         radiobuttonchecked = radiobuttonchecked:copy(self.wh*scrwh/158,self.ht*scrht/212)
         gc:drawImage(radiobuttonchecked,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
         if optbtnsplinehover == true then
@@ -495,6 +510,24 @@ function optionbutton:paint(gc)
         radiobuttonunchecked = radiobuttonunchecked:copy(self.wh*scrwh/158,self.ht*scrht/212)
         gc:drawImage(radiobuttonunchecked,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
         if optbtnsplinehover == true then
+            radiobuttonuncheckedgrey = radiobuttonuncheckedgrey:copy(self.wh*scrwh/158,self.ht*scrht/212)
+            gc:drawImage(radiobuttonuncheckedgrey,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
+        end
+    end
+
+    -- Sets properties for linear radio button
+    if calcmode == 9 and self.id == 9 then
+        lblhdg = self.hdg -- Sets heading Linear Interpolation
+        radiobuttonchecked = radiobuttonchecked:copy(self.wh*scrwh/158,self.ht*scrht/212)
+        gc:drawImage(radiobuttonchecked,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
+        if optbtnlinearhover == true then
+            radiobuttoncheckedgrey = radiobuttoncheckedgrey:copy(self.wh*scrwh/158,self.ht*scrht/212)
+            gc:drawImage(radiobuttoncheckedgrey,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
+        end
+    elseif self.id == 9 and calcmode ~= 9 then
+        radiobuttonunchecked = radiobuttonunchecked:copy(self.wh*scrwh/158,self.ht*scrht/212)
+        gc:drawImage(radiobuttonunchecked,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
+        if optbtnlinearhover == true then
             radiobuttonuncheckedgrey = radiobuttonuncheckedgrey:copy(self.wh*scrwh/158,self.ht*scrht/212)
             gc:drawImage(radiobuttonuncheckedgrey,scrwh-(self.wh+self.x+padding)*scrwh/158,scrht-(self.ht+self.y+padding)*scrht/212)
         end
@@ -559,7 +592,7 @@ function pushbutton:paint(gc)
         btnresetflash = false
     end
 
-    -- Botton coloring
+    -- Calc button coloring
     if self.id == 6 and btncalcdis == false then -- Makes calc button blue during mouse click
         if btncalcclick == true or enterpress == true then
             buttonblue = buttonblue:copy(self.wh*scrwh/158,self.ht*scrht/212)
@@ -592,7 +625,7 @@ function pushbutton:paint(gc)
         gc:drawString(self.lbl,scrwh-(self.x+padding+self.wh/2)*scrwh/158-btnlblwh/2,scrht-(self.y+padding+self.ht/2)*scrht/212-btnlblht/2,"top")
     end
 
-    -- Botton coloring
+    -- Reset button coloring
     if self.id == 7 then -- Makes reset button blue during mouse click
         if btnresetclick == true or btnresetflash == true then
             buttonblue = buttonblue:copy(self.wh*scrwh/158,self.ht*scrht/212)
@@ -649,6 +682,13 @@ function on.mouseMove(mx,my)
         optbtnsplinehover = false
     end
 
+    -- Sends command to make option button Linear grey
+    if optbtnlinear:hover(mx,my) then
+        optbtnlinearhover = true
+    else
+        optbtnlinearhover = false
+    end
+
     -- Sends command to make calc button grey
     if btncalc:hover(mx,my) then
         btncalchover = true
@@ -671,6 +711,7 @@ function on.mouseUp(mx,my)
     optbtnlagrangeclick = false
     optbtntabularclick = false
     optbtnsplineclick = false
+    optbtnlinearclick = false
     btncalcclick = false
     btnresetclick = false
 
@@ -694,10 +735,18 @@ function on.mouseDown(mx,my)
         ioidtable[3]:setText("")
     end
 
-    -- Tabular button, sends command to use spline calc mode
+    -- Spline button, sends command to use spline calc mode
     if optbtnspline:hover(mx,my) then
         optbtnsplineclick = true
         calcmode = 8
+        ioidtable[2]:setText("")
+        ioidtable[3]:setText("")
+    end
+
+    -- Linear button, sends command to use spline calc mode
+    if optbtnlinear:hover(mx,my) then
+        optbtnlinearclick = true
+        calcmode = 9
         ioidtable[2]:setText("")
         ioidtable[3]:setText("")
     end
@@ -712,6 +761,8 @@ function on.mouseDown(mx,my)
                 calctab() -- Sends command to calculate Tabulars
             elseif calcmode == 8 then
                 calcspline() -- Sends command to calculate Splines
+            elseif calcmode == 9 then
+                calclinear() -- Sends command to calculate Linear
             end
         end
     end
@@ -1041,6 +1092,82 @@ function calcspline()
     end
 end
 
+function calclinear()
+
+    local xi = var.recall("xi") -- Stores xi table from Nspire in Lua
+    local yi = var.recall("yi")-- Stores yi table from Nspire in Lua
+    local x = ioexptable[1] -- Fetches x
+    local dup = 0 -- Initial value for checking unique xi values
+    local xiyicheck = 0 -- Initial value to verify tables in spreadsheet are OK.
+    local xrange = nil -- Initial value to verify x value is within xi table range
+
+    -- Verifies xi and yi contain valid numbers
+    if xi == nil or yi == nil then
+        ioidtable[2]:setText("- - -")
+        ioidtable[3]:setText("Aw, Snap! Something is wrong.")
+        xiyicheck = 1
+    elseif #xi < 3 or #yi < 3 then
+        ioidtable[2]:setText("- - -")
+        ioidtable[3]:setText("Table is to short")
+        xiyicheck = 1
+    else
+
+        -- Sorts xi table in ascending order
+        table.sort(xi)
+
+        -- Verifies unique xi values
+        for i = 1, #xi-1 do
+            if xi[i] == xi[i+1] then
+                dup = dup+1
+            end
+        end
+
+        -- Checks if x is a valid number within xi table range
+        if type(x) == "number" then
+            if x >= xi[1] and x <= xi[#xi] then
+                xrange = 0 -- x is inside xi table range
+            else
+                xrange = 1 -- x is outside xi table range
+            end
+        else
+            xrange = nil -- x is not a number
+        end
+
+        if dup ~= 0 then
+            ioidtable[2]:setText("- - -")
+            ioidtable[3]:setText("xi's must be unique")
+        end
+
+        if xrange == 1 then
+            ioidtable[2]:setText("- - -")
+            ioidtable[3]:setText("x is out of range")
+        elseif xrange == nil then
+            ioidtable[2]:setText("- - -")
+            ioidtable[3]:setText("x is unknown")
+        end
+
+    end
+
+    -- Calculates equation
+    if dup == 0 and xiyicheck == 0 and xrange == 0 then
+        math.eval("delvar x")
+        local printeq = math.evalStr("linearfunction:=linear(x,xi,yi,0)") -- Calculates graph
+        ioidtable[3]:setText("\\0el {"..printeq.."}") -- Prints equation
+        if type(ioexptable[1]) == "number" then
+            local printy = math.eval("linear("..x..",xi,yi,1)")
+            if tonumber(printy) == nil then
+                printy = "Error in CAS math engine"
+            end
+            var.store("xplot",ioexptable[1])
+            var.store("yplot",printy)
+            ioidtable[2]:setText(printy) -- Print answer y
+        else
+            ioidtable[3]:setText("x must be a number")
+        end
+    end
+
+end
+
 function reset()
 
     for i = 1,3 do
@@ -1052,6 +1179,7 @@ function reset()
     var.store("tabular3function",0)
     var.store("tabular5function",0)
     var.store("splinefunction",0)
+    var.store("linearfunction",0)
     var.store("xi",{})
     var.store("yi",{})
     var.store("xplot",0)
