@@ -1,0 +1,28 @@
+Define tabular5(x,eqx,eqy,returntype)=
+Func
+Local x1,x2,x3,x4,x5,y1,y2,y3,y4,y5,a,b,c,d,e,f,g,h,j,k,n,y
+x1:=eqx[1]:y1:=eqy[1]
+x2:=eqx[2]:y2:=eqy[2]
+x3:=eqx[3]:y3:=eqy[3]
+x4:=eqx[4]:y4:=eqy[4]
+x5:=eqx[5]:y5:=eqy[5]
+a:=y2-y1
+b:=y3-y2
+c:=y4-y3
+d:=y5-y4
+e:=b-a
+f:=c-b
+g:=d-c
+h:=f-e
+j:=g-f
+k:=j-h
+© x must be between x2 - x3 - x4
+n:=((x-x3)/(abs(x3-x2)))
+y:=y3+n*(((b+c)/(2))-((h+j)/(12)))+n^(2)*(((f)/(2))-((k)/(24)))+n^(3)*((h+j)/(12))+n^(4)*((k)/(24))
+© 0 returns function graph, 1 returns interpolated value y
+If returntype=0 Then
+  Return piecewise(y,min(eqx)≤x≤max(eqx))
+ElseIf returntype=1 Then
+  Return y
+EndIf
+EndFunc
