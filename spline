@@ -1,0 +1,49 @@
+Define spline(x,eqx,eqy,returntype)=
+Func
+© "https://en.wikipedia.org/wiki/Spline_(mathematics)"
+Local b,c,d,h,i,j,l,n,z,alpha,my,splinetbl,splinepiece
+n:=dim(eqx)
+For i,1,n-1
+  h[i]:=eqx[i+1]-eqx[i]
+EndFor
+alpha:={0} © alpha[1] is not documentet on wiki. Equations works with both 0 and 1.
+For i,2,n-1
+  alpha[i]:=((3)/(h[i]))*(eqy[i+1]-eqy[i])-((3)/(h[i-1]))*(eqy[i]-eqy[i-1])
+EndFor
+l[1]:=1:my[1]:=0:z[1]:=0
+For i,2,n-1
+  l[i]:=2*(eqx[i+1]-eqx[i-1])-h[i-1]*my[i-1]
+  my[i]:=((h[i])/(l[i]))
+  z[i]:=((alpha[i]-h[i-1]*z[i-1])/(l[i]))
+EndFor
+l[n]:=1:z[n]:=0
+For i,1,n
+  b[i]:=0:c[i]:=0:d[i]:=0
+EndFor
+For j,n-1,1,−1
+  c[j]:=z[j]-my[j]*c[j+1]
+  b[j]:=((eqy[j+1]-eqy[j])/(h[j]))-((h[j]*(c[j+1]+2*c[j]))/(3))
+  d[j]:=((c[j+1]-c[j])/(3*h[j]))
+EndFor
+For i,1,n-1
+  splinetbl[i]:=d[i]*(x-eqx[i])^(3)+c[i]*(x-eqx[i])^(2)+b[i]*(x-eqx[i])+eqy[i]
+EndFor
+© 0 returns function graph, 1 returns interpolated value y
+If returntype=0 Then © Thanks, critor @ tiplanet
+  splinepiece:="piecewise("
+  For i,1,n-1
+    If i=n-1 Then
+      splinepiece:=splinepiece&string(splinetbl[i])&","&string(eqx[i])&"≤x≤"&string(eqx[i+1])&")"
+    Else
+      splinepiece:=splinepiece&string(splinetbl[i])&","&string(eqx[i])&"≤x≤"&string(eqx[i+1])&","
+    EndIf
+  EndFor
+  Return expr(splinepiece)
+ElseIf returntype=1 Then
+  For i,1,n-1
+    If x≥eqx[i] and x≤eqx[i+1] Then
+      Return splinetbl[i]
+    EndIf
+  EndFor
+EndIf
+EndFunc
