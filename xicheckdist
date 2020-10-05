@@ -1,0 +1,29 @@
+Define xicheckdist(no,eqx)=
+Func
+Local x1,x2,x3,x4,x5,xd1,xd2
+If no=3 Then
+  x1:=eqx[1]
+  x2:=eqx[2]
+  x3:=eqx[3]
+  xd1:=x1-2*x2+x3
+  If xd1=0 Then
+    Return 0
+  Else
+    Return 1
+  EndIf
+EndIf
+If no=5 Then
+  x1:=eqx[1]
+  x2:=eqx[2]
+  x3:=eqx[3]
+  x4:=eqx[4]
+  x5:=eqx[5]
+  xd1:=−x1+x2+x4-x5
+  xd2:=x2-2*x3+x4
+  If xd1=0 and xd2=0 Then
+    Return 0
+  Else
+    Return 1
+  EndIf
+EndIf
+EndFunc
