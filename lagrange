@@ -1,0 +1,11 @@
+Define lagrange(x,eqx,eqy,returntype)=
+Func
+Local fnc
+fnc:=∑(eqy[j]*∏(when(not (i=j),((x-eqx[i])/(eqx[j]-eqx[i])),1),i,1,dim(eqx)),j,1,dim(eqy))
+© 0 returns function graph, 1 returns interpolated value y
+If returntype=0 Then
+  Return piecewise(fnc,min(eqx)≤x≤max(eqx))
+ElseIf returntype=1 Then
+  Return fnc
+EndIf
+EndFunc
