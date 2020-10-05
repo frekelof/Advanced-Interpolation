@@ -1,0 +1,26 @@
+Define linear(x,eqx,eqy,returntype)=
+Func
+Local n,i,lineartbl,linearpiece
+n:=dim(eqx)
+For i,1,n-1
+  lineartbl[i]:=(((eqy[i]-eqy[i+1])*x+eqx[i]*eqy[i+1]-eqx[i+1]*eqy[i])/(eqx[i]-eqx[i+1]))
+EndFor
+© 0 returns function graph, 1 returns interpolated value y
+If returntype=0 Then © Thanks, critor @ tiplanet
+  linearpiece:="piecewise("
+  For i,1,n-1
+    If i=n-1 Then
+      linearpiece:=linearpiece&string(lineartbl[i])&","&string(eqx[i])&"≤x≤"&string(eqx[i+1])&")"
+    Else
+      linearpiece:=linearpiece&string(lineartbl[i])&","&string(eqx[i])&"≤x≤"&string(eqx[i+1])&","
+    EndIf
+  EndFor
+  Return expr(linearpiece)
+ElseIf returntype=1 Then
+  For i,1,n-1
+    If x≥eqx[i] and x≤eqx[i+1] Then
+      Return lineartbl[i]
+    EndIf
+  EndFor
+EndIf
+EndFunc
